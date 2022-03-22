@@ -127,52 +127,32 @@ def _fill_memoized_sequence(sequence_size, sequence_window, prev_window_size):
 # what about memoizing subsequences instead of just full sequences? I.e. midway through a sequence
 
 # assumes sequences are direct ancestors and have different lengths
-def subsequence_diff(sequence, other_sequence=[], max_subsequence=8, *, memo=None):
-    if not other_sequence:
-        other_sequence = sequence
-        sequence = []
-
-    sequence_length_diff = len(other_sequence) - len(sequence)
+def subsequence_diff(sequence, max_subsequence=8):
     subsequences = set()
     iterations = 0
 
-    if sequence_length_diff < 0:
-        raise ValueError('Sequence parameters must be ordered shortest then longest')
+    if tuple(sequence) in MEMOIZED_TOKENS:
+        subsequences.update(MEMOIZED_TOKENS[tuple(sequence)])
+        return subsequences, iterations
 
-    if sequence_length_diff == 0:
-        raise ValueError('Sequences cannot be the same length')
-
-    if sequence_length_diff == 1 and sequence != [] and sequence != other_sequence[:-1]:
-        raise ValueError(f'Cannot compare sequences with different ancestors. Expected ancestor sequence to be {sequence} but got {other_sequence[:-1]}')
-
-    if sequence_length_diff > 1:
-        prev_subsequences, prev_iterations = subsequence_diff(sequence, other_sequence[:-1], max_subsequence, memo=memo)
+    if sequence[:-1] != []:
+        prev_subsequences, prev_iterations = subsequence_diff(sequence[:-1], max_subsequence)
         subsequences.update(prev_subsequences)
         iterations += prev_iterations
 
-    subsequence_start_size = min(len(other_sequence), max_subsequence)
-    for subsequence_start_position in range(0, len(other_sequence)):
-        subsequence = tuple(other_sequence[subsequence_start_position:subsequence_start_position + subsequence_start_size])
+    subsequence_start_size = min(len(sequence), max_subsequence)
+    for subsequence_start_position in range(0, len(sequence)):
+        subsequence = tuple(sequence[subsequence_start_position:subsequence_start_position + subsequence_start_size])
 
         # print('diff token', subsequence, subsequence_start_position, subsequence_start_size)
 
         subsequences.add(subsequence)
         iterations += 1
 
-    if memo is not None:
-        if sequence == []:
-            total_sequence = set(memo[tuple(other_sequence[:-1])]) if len(other_sequence) != 1 else set()
-            total_sequence.update(subsequences)
-            memo[tuple(other_sequence)] = tuple(total_sequence)
-
-        if tuple(sequence) in memo:
-            total_sequence = set(memo[tuple(sequence)])
-            total_sequence.update(subsequences)
-            memo[tuple(other_sequence)] = tuple(total_sequence)
-
-        # print('memo', sequence, other_sequence, memo)
+    MEMOIZED_TOKENS[tuple(sequence)] = tuple(subsequences)
 
     return subsequences, iterations
+
 
 def generate_build_tokens(buildings):
     tokens = set()
@@ -183,21 +163,15 @@ def generate_build_tokens(buildings):
 
     # reverse-scan build for memoized ancestors
     print(buildings)
-    for i in range(1, len(buildings) + 1):
-        partial_build = buildings[:-i]
+    for i in range(len(buildings), 0, -1):
         iterations += 1
 
-        if tuple(partial_build) in MEMOIZED_TOKENS:
-            tokens.add(MEMOIZED_TOKENS[tuple(partial_build)])
-            diff_tokens, diff_iterations = subsequence_diff(partial_build, buildings, memo=MEMOIZED_TOKENS)
-            tokens.update(diff_tokens)
-            iterations += diff_iterations
-            break
+        diff_tokens, diff_iterations = subsequence_diff(buildings[:i - 1], buildings[:i], memo=MEMOIZED_TOKENS)
+        tokens.update(diff_tokens)
+        iterations += diff_iterations
 
-        if partial_build == []:
-            diff_tokens, diff_iterations = subsequence_diff(buildings, memo=MEMOIZED_TOKENS)
-            tokens.update(diff_tokens)
-            iterations += diff_iterations
+        if tuple(buildings[:i - 1]) in MEMOIZED_TOKENS:
+            tokens.add(MEMOIZED_TOKENS[tuple(buildings[:i - 1])])
             break
 
     return tokens, iterations
@@ -210,14 +184,8 @@ sequence3 = [1, 2, 5, 6]
 
 memo = {}
 
-print('first sequence', subsequence_diff(sequence, memo=memo))
-diff, iters = subsequence_diff(sequence, sequence2, memo=memo)
-print(diff, iters)
-if len(diff) == iters:
-    print('Optimal diff')
-
-t, i = generate_build_tokens(sequence)
-t2, i2 = generate_build_tokens(sequence2)
+t, i = subsequence_diff(sequence)
+t2, i2 = subsequence_diff(sequence2)
 
 print('first sequence', t, i)
 print('second sequence', t2, i2)
